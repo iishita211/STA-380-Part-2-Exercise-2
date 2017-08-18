@@ -1,0 +1,284 @@
+---
+title: "STA 380, Part 2: Exercises 1"
+author: "Bhat Cui Ishita Srikanth"
+date: "August 12, 2017"
+output: rmarkdown::github_document
+---
+
+### Flights at ABIA
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+abia = read.csv('ABIA.csv')
+library(dplyr)
+library(ggplot2)
+```
+
+Departure Delay:
+
+```{r}
+abia_delayed_subset =abia %>% filter(abia$Cancelled ==0)
+ggplot(abia_delayed_subset,aes(DepDelay/60)) + geom_bar(color='steelblue')+labs(y = "Number of Flights",x="Departure Delay (in hrs)", title='Departure Delay vs Number of Flights')+xlim(-1,4)
+```
+
+For departures, median flight delay is 0 min.  In fact, majority of the flights depart ~0-15 min before the scheduled departure time. Only, a relatively small number of flights have significant delays in departing time. As a result, we decided to move on to explore the arrival delays  for different airlines.
+
+Arrival Delay:
+
+```{r}
+abia_delayed_subset =abia %>% filter(abia$Cancelled ==0)
+ggplot(abia_delayed_subset,aes(ArrDelay/60)) + geom_bar(color='steelblue')+labs(y = "Number of Flights",x="Arrival Delay (in hrs)", title='Arrival Delay vs Number of Flights')+xlim(-1,4)
+```
+
+From the above plot, we see that most of the flights are delayed by less than half an hour. There are few flights which are delayed by more than 6 hrs as well ( we have removed those points from the graph for the purpose of better representation)
+
+Now we try to explore if there are any seasonal trends in the arrival delays
+
+```{r}
+# 
+abia_delayed_subset =  na.omit(abia_delayed_subset)
+avg_delay_carrier_month=abia_delayed_subset %>% group_by(Month,UniqueCarrier) %>% summarise(avgArrDelay = mean(ArrDelay),total_flight=n()) 
+
+# ggplot(dfplot, mapping = aes(x = DateTime, y = value, color = key) ) + geom_line()
+
+ggplot(avg_delay_carrier_month[which(avg_delay_carrier_month$total_flight>30),],aes(x=Month,y=avgArrDelay,color=UniqueCarrier)) + geom_line()+labs(y = "Average Arrival Delay",x="Month", title='Average arrival Delay by month')+xlim(1,12)
+
+```
+Out of the airlines that fly more than 30 times in a month, we see that OO has the most average arrival delay, which is in month of December followed by Endeavor Airlines(9E)in the month of April.
+Delta Airlines (DL) has the least number of avg delays in September( though we see that it is amongst one of the highest in July)
+
+```{r}
+# 
+avg_delay_carrier_DoW=abia_delayed_subset %>% group_by(DayOfWeek,UniqueCarrier) %>% summarise(avgArrDelay = mean(ArrDelay),total_flight=n()/52) ##Assuming that each Mon/Tue/Wed.. occurs 52 times a year
+
+# ggplot(dfplot, mapping = aes(x = DateTime, y = value, color = key) ) + geom_line()
+
+ggplot(avg_delay_carrier_DoW[which(avg_delay_carrier_DoW$total_flight>=1),],aes(x=DayOfWeek,y=avgArrDelay,color=UniqueCarrier)) + geom_line()+labs(y = "Average Arrival Delay",x="Day of Week", title='Average arrival Delay by Day of Week')+xlim(1,7)
+
+```
+Now we try to look at the the delays at day of week level. We observe that flights such as B6, EV and US have increased delays over the weekend starting Friday.Our hypothesis for this trend is that people go away for weekends on Friday. Since the frequency of flights is suspected to be more at this time, the probability of delays increases as well. To test our hypothesis, we plotted the below graph and we saw that Friday had the most number of scheduled flights.
+
+```{r}
+ggplot(abia_delayed_subset,aes(DayOfWeek,fill=UniqueCarrier)) + geom_bar()+labs(y="Number of Flights",x = "Day of Week",title='Flight Frequency by Day of Week')
+```
+
+Now we try to see if there is a correlation between the distance of the flight and arrival delays.
+
+
+```{r}
+avg_delay_carrier_distance=abia_delayed_subset %>% group_by(Distance, UniqueCarrier) %>% summarise(avgArrDelay = mean(ArrDelay)) 
+
+# ggplot(dfplot, mapping = aes(x = DateTime, y = value, color = key) ) + geom_line()
+
+ggplot(avg_delay_carrier_distance,aes(x=Distance,y=avgArrDelay,color=UniqueCarrier)) + geom_line()+labs(y = "Average Arrival Delay",x="Distance", title='Average arrival Delay by Distance')
+```
+We observe very distinctly from the above plot that (Skywest Airlines) OO is considerably delayed for very short flights. As the distance increases, avg arrival delay decreases till a point after which it shoots up.We also see a similar increase(though not that significant)in delays for other flights for distance above 1000. This could be due to the fact that long haul flights must be having layovers( information not available with us). During layover there might be more chances for the flight to get delayed due to additional issues at the layover airport as well. 
+
+
+Cancellation:
+
+```{r}
+abia_cancelled_subset =abia %>% filter(abia$Cancelled ==1)
+ggplot(abia_cancelled_subset, aes(abia_cancelled_subset$CancellationCode))+geom_bar(fill="steelblue",width=0.5)+labs(x ='Number of Cancellations',y='Cancellation Type', title='Cancellation Frequency')
+```
+From the above plot, we see that maximum cancellations occur due to carrier, followed by weather. Cancellation due to NAS is lower compared to the other two.
+
+```{r}
+ggplot(abia_cancelled_subset,aes(Month,fill=CancellationCode)) + geom_bar()+labs(y = "Number of Cancellations",title='Distribution of Cancellation types accross Months')
+
+```
+
+The above plot depicts the distribution of different kind of cancellations across months. We see that most number of cancellations occur in March. Moreover, most number cancellations due to carries issues happen in April, due to weather conditions happen on september and to NAS happens in January.
+
+```{r}
+par(mfrow=c(1,2))
+
+ggplot(abia_cancelled_subset,aes(UniqueCarrier,fill=as.factor(Month))) + geom_bar()+labs(y = "Number of Cancellations",title='Distribution of Cancellations by airlines and month')
+
+ggplot(abia_cancelled_subset,aes(UniqueCarrier,fill=CancellationCode)) + geom_bar()+labs(y = "Number of Cancellations",title='Distribution of Cancellations by Airlines and Code')
+
+```
+By looking at the Carrier wise plot, we see that most number of cancellations happen for American Airlines, with type A and Type B having almost similar distribution in cancellation. Moreover, the delay happens most in April, followed by March. Now we look at cancellation rate.
+
+
+
+```{r}
+# total_flights = nrow(abia)
+flights_per_airline = abia %>% group_by(UniqueCarrier) %>% summarise(total=n())
+
+cancelled_flights_per_airline = abia[which(abia$Cancelled==1),] %>% group_by(UniqueCarrier) %>% summarise(total=n())
+cancelled_flight_rates = merge(flights_per_airline, cancelled_flights_per_airline, by='UniqueCarrier', all=TRUE)
+cancelled_flight_rates$rate = cancelled_flight_rates$total.y/cancelled_flight_rates$total.x
+cancelled_flight_rates
+ggplot(cancelled_flight_rates,aes(x=UniqueCarrier,y=rate)) + geom_point()+labs(y = "Average Arrival Delay",x="Distance", title='Average arrival Delay by Distance')
+
+# 
+# barplot(cancelled_flight_rates$rate,col='steelblue',xlab='UniqueCarrier',names.arg = cancelled_flight_rates$UniqueCarrier)
+
+```
+
+From the above graph, we can see that cancellation rate for AA is second highest after MQ. Since AA flies more thus impacting more people, we decided to deep dive to identify it's cancellation trends.
+
+First we need to see if the cancellation is  high only for flights from Austin/ flights to Austin or both.
+
+
+```{r}
+# abia %>% filter(abia, UniqueCarrier='AA') %>% summarise()
+abia_cancelled_subset$toAustin=ifelse(abia_cancelled_subset$Origin=='AUS',0,1)
+abia_AA =abia_cancelled_subset %>% filter(abia_cancelled_subset$UniqueCarrier =='AA')
+
+ggplot(abia_AA,aes(as.factor(toAustin))) + geom_bar(fill="steelblue",width = 0.5)+labs(y = "Number of Cancellations",title='Distribution of Cancellation for flights end/originating at Austin')
+
+```
+We observed that for AA, flights originating/landing at Austin have almost equal number of cancellations. Now we look closely into the origin/destination of these cancelled flights.
+
+
+```{r}
+abia_AA_origin =abia_AA %>% filter(abia_AA$toAustin ==1)
+par(mfrow=c(1,2))
+ggplot(abia_AA_origin,aes(Origin)) + geom_bar(fill='khaki')+labs(y = "Number of Cancellations",title='Distribution of Cancellations by Origin Airport')
+
+abia_AA_dest =abia_AA %>% filter(abia_AA$toAustin ==0)
+
+ggplot(abia_AA_dest,aes(Dest)) + geom_bar(fill='khaki')+labs(y = "Number of Cancellations",title='Distribution of Cancellations by Destination Airport')
+
+
+```
+From the above plots, we see that number of cancellations happen for flights to/from DFW airport followed by ORD, but this can be due to more number of flights to/from these airports. 
+Hence we  decide to plot Cancellation rate for each of these source/destination Airports
+
+```{r}
+par(mfrow=c(1,2))
+### Origin
+abia$toAustin=ifelse(abia$Origin=='AUS',0,1)
+
+
+flights_per_airpot_origin = abia%>% filter(abia$UniqueCarrier =='AA',abia$toAustin==1) %>% group_by(Origin) %>% summarise(total=n())
+
+cancelled_flights_per_airport_origin = abia%>% filter(abia$UniqueCarrier =='AA',abia$toAustin==1, abia$Cancelled==1)%>% group_by(Origin) %>% summarise(total=n())
+
+
+cancelled_flight_rates_origin = merge(flights_per_airpot_origin, cancelled_flights_per_airport_origin, by='Origin', all=TRUE)
+
+cancelled_flight_rates_origin$rate = cancelled_flight_rates_origin$total.y/cancelled_flight_rates_origin$total.x
+
+cancelled_flight_rates_origin
+
+ggplot(cancelled_flight_rates_origin,aes(x=Origin,y=rate)) + geom_point()+labs(x = "Origin Airport",y="Cancellation Rate", title='CAncellation Rate by Destination Airport')+theme(axis.text.x=element_text(angle=90, hjust=1))
+
+
+## Destination
+
+flights_per_airpot_dest = abia%>% filter(abia$UniqueCarrier =='AA',abia$toAustin==0) %>% group_by(Dest) %>% summarise(total=n())
+
+cancelled_flights_per_airport_dest = abia%>% filter(abia$UniqueCarrier =='AA',abia$toAustin==0, abia$Cancelled==1)%>% group_by(Dest) %>% summarise(total=n())
+
+
+cancelled_flight_rates_dest = merge(flights_per_airpot_dest, cancelled_flights_per_airport_dest, by='Dest', all=TRUE)
+
+cancelled_flight_rates_dest$rate = cancelled_flight_rates_dest$total.y/cancelled_flight_rates_dest$total.x
+
+cancelled_flight_rates_dest
+
+ggplot(cancelled_flight_rates_dest,aes(x=Dest,y=rate)) + geom_point()+labs(x = "Destination Airport",y="Cancellation Rate", title='Cancellation Rate by Destination Airport')+theme(axis.text.x=element_text(angle=90, hjust=1))
+
+```
+
+We see from the above plot that the cancellation rates are highest at STL, followed by ORD, SJC and then DFW.
+We also saw from previous barplot that ORD had maximum number of cancellations after DWF
+Hence we can say that for American Airlines, we should not take flights to/from ORD(Chicago) Airport.
+
+Concluding, we say that to aviod cancellations:
+1) We should not take flights to/from ORD(Chicago) Airport.
+2) We should aviod AA in month of March and April
+
+### Practice with association rule mining
+
+```{r}
+library(arules)  
+library(reshape)
+library(arulesViz)
+
+# Read in groceries from file
+groceries_raw <- read.table("groceries.txt", header = FALSE, sep = ",", col.names = paste0("V",seq_len(50)), fill = TRUE)
+
+#summary(groceries_raw)
+#attach(grocery_raw)
+
+# Create User
+groceries_raw$user <- seq.int(nrow(groceries_raw))
+
+
+#Melt column into one row
+groceries_reshaped=melt(groceries_raw, id=c("user"))
+
+#Remove column 'Variable'
+groceries_reshaped=groceries_reshaped[,-c(2)]
+
+#sort
+groceries_reshaped2<-groceries_reshaped[order(groceries_reshaped$user),]
+
+#Remove all blank values 
+groceries_reshaped3=groceries_reshaped2[groceries_reshaped2$value!="",]
+# make user a factor
+groceries_reshaped3$user <- factor(groceries_reshaped3$user)
+
+summary(groceries_reshaped3)
+# First split data into a list of items for each user
+groceries <- split(x=groceries_reshaped3$value, f=groceries_reshaped3$user)
+
+## Remove duplicates ("de-dupe")
+groceries <- lapply(groceries, unique)
+
+## Cast this variable as a special arules "transactions" class.
+groceriestrans <- as(groceries, "transactions")
+
+#Create a list of possible values for support and confidence
+sup = seq(.009,0.05,by=.01)
+con = seq(.2,0.5,by=.05)
+parmb = expand.grid(sup,con)
+colnames(parmb) = c('sup','con')
+nset = nrow(parmb)
+avg_inspection = rep(0,nset)
+# Run a loop to get optimum value of support and confidence to maximize lift
+for(i in 1:nset) {
+  groceryrules <- apriori(groceriestrans, parameter=list(support=parmb[i,1], confidence=parmb[i,2], maxlen=5))
+  inspection=inspect(groceryrules)
+  avg_inspection[i]=mean(inspection$lift)
+}
+#inspection=mean(inspection)
+print(cbind(parmb,avg_inspection))
+
+```
+We  ran a loop with values for support ranging from 0.009 to 0.05 and confidence from 0.2 to 0.5. For these different combinations, we looked for that one that gave us max average lift, which means that there is a high association betwwen the items in the basket. Our goal was to get a high lift value with maximum support. The results we got were best for support= 0.009 and confidence =0.5 with a max average lift of 2.2255.However, increasing the support will ensure higher transactions containing items of interest. The trade off here could be the decrease in lift, which what we see here. But, a slightly higher support ensures many more transactions/rules with a minimum effect on lift. Thus, we decided to choose support to be in between the two values, at 0.01 and confidence a little lower at 0.4. 
+
+```{r}
+groceryrules_final1<- apriori(groceriestrans, 
+	parameter=list(support=.01, confidence=.4, maxlen=5))
+
+inspect(subset(groceryrules_final1, subset=lift > 2))
+
+#inspect(groceryrules_final1)
+summary(groceryrules_final1)
+
+
+```
+We then again ran the model with chosen values of support and confidence and took a subset of only those rules whose lift was greater than 2 since the mean was very close to 2, it could have given us less associated rules as well. This gave us set of 29 rules with strong association. Out of the groups, whole milk seems to come up the most followed by other vegetables. A large % of people with various baskets are almost always interested in buying whole milk and/or other vegetables.
+```{r}
+subset_groc = (subset(groceryrules_final1, subset=lift > 2))
+plot(subset_groc,method="graph", control = list(type="items"))
+plot(groceryrules_final1, shading="order", control = list(main = "Two-key plot",
+  col=rainbow(max(size(groceryrules_final1))-1L)))
+
+plot(subset_groc, method="matrix", measure="lift", control=list(reorder=TRUE))
+subrules <- sample(subset_groc, 20)
+plot(subrules, method="graph", control=list(layout=igraph::in_circle()))
+```
+
+
+The visualizations above gives us the strength f the associations. THe first graph gives us a depiction of the importance of the various basket items. Whole milk and other vegetables that came us to be most common are in the middle with branches extending outwards to other items. The next one gives us a two-key plot, not for only the subset but the whole set of values as a function of support and confidence. The final graphis a matrix representation of the matrix of rules with the color scale showing the lift. We can match these to the lift values above and get the exact items in the basket.  
+
+
