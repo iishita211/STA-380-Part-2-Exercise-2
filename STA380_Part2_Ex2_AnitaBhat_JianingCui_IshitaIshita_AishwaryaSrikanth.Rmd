@@ -1,11 +1,11 @@
 ---
-title: "STA 380, Part 2: Exercises 1"
+title: "STA 380, Part 2: Exercises 2"
 author: "Bhat Cui Ishita Srikanth"
 date: "August 12, 2017"
 output: rmarkdown::github_document
 ---
 
-### Flights at ABIA
+### Problem 1 Flights at ABIA
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -194,6 +194,272 @@ Hence we can say that for American Airlines, we should not take flights to/from 
 Concluding, we say that to aviod cancellations:
 1) We should not take flights to/from ORD(Chicago) Airport.
 2) We should aviod AA in month of March and April
+
+
+
+### Problem 2 Author Attribution
+
+
+```{r}
+rm(list=ls())
+```
+```{r}
+library(tm)
+```
+```{r}
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+```
+
+
+(1)First model: Naive Bayes
+--------------------------------------------------------------------
+Step 1.Create a training set
+--------------------------------------------------------------------
+Make a list called "authors" to get all the authors' names and a list called "files" to get the files.
+```{r}
+author_directories = Sys.glob('ReutersC50/C50train/*')
+files = NULL
+authors = NULL
+```
+
+Use for loop to iterate over 50 authors and read all 2500 texts.
+```{r}
+for(author in author_directories) {
+	author_name = substring(author, first=21)
+	files_to_add = Sys.glob(paste0(author, '/*.txt'))
+	files = append(files, files_to_add)
+	authors = append(authors, rep(author_name, length(files_to_add)))
+}
+my_documents = lapply(files, readerPlain) 
+```
+
+Build a corpus
+```{r}
+names(my_documents) = files
+names(my_documents) = sub('.txt', '', names(my_documents))
+my_corpus = Corpus(VectorSource(my_documents))
+```
+
+Some preprocessing steps: set every character to lowercase and remove numbers & punctuations & white spaces & stopwords.
+```{r}
+my_corpus = tm_map(my_corpus, content_transformer(tolower)) 
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers))
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation))
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) 
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+```
+
+Form a DTM
+```{r}
+DTM_documents = DocumentTermMatrix(my_corpus)
+DTM_documents
+```
+
+Remove some sparse terms.
+```{r}
+DTM_dcouments = removeSparseTerms(DTM_documents, 0.99)
+DTM_documents
+```
+
+Get the train set
+```{r}
+X_train = as.matrix(DTM_documents) #Build a train set
+smooth_count = 1/nrow(X_train) # Group smoothed train records by authors
+w_train = rowsum(X_train + smooth_count,authors)
+w_train= w_train/sum(w_train)
+w_train = log(w_train)
+```
+
+--------------------------------------------------------------------
+Step 2. Create a test set (similar to the creation of our training set)
+--------------------------------------------------------------------
+
+Make lists
+```{r}
+author_directories= Sys.glob('ReutersC50/C50test/*')
+files = NULL
+authors_test = NULL
+author_list = NULL
+```
+
+Use for loop to iterate over 50 authors.
+```{r}
+for(author in author_directories) {
+  author_name = substring(author, first=20)
+  author_list = append(author_list,author_name)
+  files_to_add = Sys.glob(paste0(author, '/*.txt'))
+  files = append(files, files_to_add)
+  authors_test = append(authors_test, rep(author_name, length(files_to_add)))
+}
+```
+
+Build a test corpus.
+```{r}
+my_documents = lapply(files, readerPlain) 
+names(my_documents) = files
+names(my_documents) = sub('.txt', '', names(my_documents))
+test_corpus = Corpus(VectorSource(my_documents))
+```
+
+Some preprocessing steps: set every character to lowercase and remove numbers & punctuations & white spaces & stopwords.
+```{r}
+test_corpus = tm_map(test_corpus, content_transformer(tolower))
+test_corpus = tm_map(test_corpus, content_transformer(removeNumbers))
+test_corpus = tm_map(test_corpus, content_transformer(removePunctuation))
+test_corpus = tm_map(test_corpus, content_transformer(stripWhitespace)) 
+test_corpus = tm_map(test_corpus, content_transformer(removeWords), stopwords("SMART"))
+```
+
+Form a test DTM.
+```{r}
+DTM_test = DocumentTermMatrix(test_corpus,list(dictionary=colnames(DTM_documents)))
+DTM_test
+X_test = as.matrix(DTM_test)
+```
+
+--------------------------------------------------------------------
+Step.3 Prediction
+--------------------------------------------------------------------
+
+Get max(Naive Bayes log probs) for each test row (so the prediction is the author of the maximum prob).
+```{r}
+predict = NULL
+for (i in 1:nrow(X_test)) {
+  max = -(Inf)
+  author = NULL
+  for (j in 1:nrow(w_train)) {
+    result = sum(w_train[j,]*X_test[i,])
+    if(result > max) {
+      max = result
+      author = rownames(w_train)[j]
+    }
+  }
+  predict = append(predict, author)
+}
+```
+
+Get the accuracy and calculate the rate of accuracy
+```{r}
+table(authors_test == predict)['TRUE']/2500
+table(authors_test[authors_test == predict])/50
+
+predict_results = table(authors_test,predict)
+
+```
+
+--------------------------------------------------------------------
+Conclusion:
+The overall rate of accuracy (the average accuracy of all 2500 articles) is about 4%.
+--------------------------------------------------------------------
+
+
+*The second model:Random Forest
+
+```{r}
+library(tm)
+library(randomForest)
+library(e1071)
+```
+
+```{r}
+readerPlain = function(fname){
+				readPlain(elem=list(content=readLines(fname)), 
+							id=fname, language='en') }
+```
+
+Make lists for both training data and test data
+```{r}
+author_dirs_train = Sys.glob('ReutersC50/C50train/*')
+author_dirs_test = Sys.glob('ReutersC50/C50test/*')
+file_list_train = NULL
+file_list_test = NULL
+labels_train = NULL
+labels_test = NULL
+```
+
+Again, for both training data and test data, iterate over 50 authors and read 2500 texts.
+```{r}
+for(author in author_dirs_train) {
+  files_to_add = Sys.glob(paste0(author, '/*.txt'))
+  file_list_train = append(file_list_train, files_to_add)
+  author_name = substring(author, first=21)
+  labels_train = append(labels_train, rep(author_name, length(files_to_add)))
+}
+```
+```{r}
+for(author in author_dirs_test) {
+  files_to_add = Sys.glob(paste0(author, '/*.txt'))
+  file_list_test = append(file_list_test, files_to_add)
+  author_name = substring(author, first=20)
+  labels_test = append(labels_test, rep(author_name, length(files_to_add)))
+}
+```
+
+Combine training data and test data.
+```{r}
+file_lists = append(file_list_train,file_list_test)
+labels = NULL
+labels <- unique(append(labels_train, labels_test))
+```
+
+Build corpus
+```{r}
+all_docs = lapply(file_lists, readerPlain) 
+names(all_docs) = file_lists
+names(all_docs) = sub('.txt', '', names(all_docs))
+my_corpus = Corpus(VectorSource(all_docs))
+#names(my_corpus) = names(all_docs)
+```
+
+Some preprocessing steps: set every character to lowercase and remove numbers & punctuations & white spaces & stopwords.
+```{r}
+my_corpus = tm_map(my_corpus, content_transformer(tolower))
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers))
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation))
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) 
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+```
+
+Form a DTM
+```{r}
+DTM = DocumentTermMatrix(my_corpus)
+DTM
+```
+
+Remove some sparse terms.
+```{r}
+DTM = removeSparseTerms(DTM, 0.975)
+X = as.matrix(DTM)
+```
+
+To run the model, first form a dataframe
+```{r}
+actual_author = rep(rep(1:50,each=50),2)
+author = as.data.frame(X)
+colnames(author) = make.names(colnames(author))
+author$actual_author=actual_author
+author$actual_author=as.factor(author$actual_author)
+```
+
+Run the rf model after spliting the data into training data and test data
+```{r}
+author_train=author[1:2500,]
+author_test=author[2501:5000,]
+set.seed(1)
+rf_author=randomForest(actual_author~.,data=author_train)
+predicted_author=predict(rf_author,newdata=author_test)
+confusionMatrix(predicted_author,author_test$actual_author)
+```
+--------------------------------------------------------------------
+Conclusion:
+The overall rate of accuracy is about 62% (better than Naive Bayes' 4%).
+--------------------------------------------------------------------
+We did the second model (Random Forest) in a seperate R file. Please see: Problem 2 Author Attribution model 2.rmd
+
+Comparing these 2 models, we found the accuracy rate of Random Forest was better than Naive Bayes.
+
 
 ### Practice with association rule mining
 

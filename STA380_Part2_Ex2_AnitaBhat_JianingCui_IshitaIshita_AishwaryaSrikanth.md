@@ -1,9 +1,9 @@
-STA 380, Part 2: Exercises 1
+STA 380, Part 2: Exercises 2
 ================
 Bhat Cui Ishita Srikanth
 August 12, 2017
 
-### Flights at ABIA
+### Problem 1 Flights at ABIA
 
 ``` r
 abia = read.csv('ABIA.csv')
@@ -267,6 +267,224 @@ We see from the above plot that the cancellation rates are highest at STL, follo
 
 Concluding, we say that to aviod cancellations: 1) We should not take flights to/from ORD(Chicago) Airport. 2) We should aviod AA in month of March and April
 
+### Problem 2 Author Attribution
+
+``` r
+rm(list=ls())
+```
+
+``` r
+library(tm)
+```
+
+    ## Loading required package: NLP
+
+    ## 
+    ## Attaching package: 'NLP'
+
+    ## The following object is masked from 'package:ggplot2':
+    ## 
+    ##     annotate
+
+``` r
+readerPlain = function(fname){
+                readPlain(elem=list(content=readLines(fname)), 
+                            id=fname, language='en') }
+```
+
+(1)First model: Naive Bayes
+---------------------------
+
+Step 1.Create a training set
+----------------------------
+
+Make a list called "authors" to get all the authors' names and a list called "files" to get the files.
+
+``` r
+author_directories = Sys.glob('ReutersC50/C50train/*')
+files = NULL
+authors = NULL
+```
+
+Use for loop to iterate over 50 authors and read all 2500 texts.
+
+``` r
+for(author in author_directories) {
+    author_name = substring(author, first=21)
+    files_to_add = Sys.glob(paste0(author, '/*.txt'))
+    files = append(files, files_to_add)
+    authors = append(authors, rep(author_name, length(files_to_add)))
+}
+my_documents = lapply(files, readerPlain) 
+```
+
+Build a corpus
+
+``` r
+names(my_documents) = files
+names(my_documents) = sub('.txt', '', names(my_documents))
+my_corpus = Corpus(VectorSource(my_documents))
+```
+
+Some preprocessing steps: set every character to lowercase and remove numbers & punctuations & white spaces & stopwords.
+
+``` r
+my_corpus = tm_map(my_corpus, content_transformer(tolower)) 
+my_corpus = tm_map(my_corpus, content_transformer(removeNumbers))
+my_corpus = tm_map(my_corpus, content_transformer(removePunctuation))
+my_corpus = tm_map(my_corpus, content_transformer(stripWhitespace)) 
+my_corpus = tm_map(my_corpus, content_transformer(removeWords), stopwords("SMART"))
+```
+
+Form a DTM
+
+``` r
+DTM_documents = DocumentTermMatrix(my_corpus)
+DTM_documents
+```
+
+    ## <<DocumentTermMatrix (documents: 2500, terms: 32241)>>
+    ## Non-/sparse entries: 473695/80128805
+    ## Sparsity           : 99%
+    ## Maximal term length: 40
+    ## Weighting          : term frequency (tf)
+
+Remove some sparse terms.
+
+``` r
+DTM_dcouments = removeSparseTerms(DTM_documents, 0.99)
+DTM_documents
+```
+
+    ## <<DocumentTermMatrix (documents: 2500, terms: 32241)>>
+    ## Non-/sparse entries: 473695/80128805
+    ## Sparsity           : 99%
+    ## Maximal term length: 40
+    ## Weighting          : term frequency (tf)
+
+Get the train set
+
+``` r
+X_train = as.matrix(DTM_documents) #Build a train set
+smooth_count = 1/nrow(X_train) # Group smoothed train records by authors
+w_train = rowsum(X_train + smooth_count,authors)
+w_train= w_train/sum(w_train)
+w_train = log(w_train)
+```
+
+|                                                                         |
+|-------------------------------------------------------------------------|
+| Step 2. Create a test set (similar to the creation of our training set) |
+
+Make lists
+
+``` r
+author_directories= Sys.glob('ReutersC50/C50test/*')
+files = NULL
+authors_test = NULL
+author_list = NULL
+```
+
+Use for loop to iterate over 50 authors.
+
+``` r
+for(author in author_directories) {
+  author_name = substring(author, first=20)
+  author_list = append(author_list,author_name)
+  files_to_add = Sys.glob(paste0(author, '/*.txt'))
+  files = append(files, files_to_add)
+  authors_test = append(authors_test, rep(author_name, length(files_to_add)))
+}
+```
+
+Build a test corpus.
+
+``` r
+my_documents = lapply(files, readerPlain) 
+names(my_documents) = files
+names(my_documents) = sub('.txt', '', names(my_documents))
+test_corpus = Corpus(VectorSource(my_documents))
+```
+
+Some preprocessing steps: set every character to lowercase and remove numbers & punctuations & white spaces & stopwords.
+
+``` r
+test_corpus = tm_map(test_corpus, content_transformer(tolower))
+test_corpus = tm_map(test_corpus, content_transformer(removeNumbers))
+test_corpus = tm_map(test_corpus, content_transformer(removePunctuation))
+test_corpus = tm_map(test_corpus, content_transformer(stripWhitespace)) 
+test_corpus = tm_map(test_corpus, content_transformer(removeWords), stopwords("SMART"))
+```
+
+Form a test DTM.
+
+``` r
+DTM_test = DocumentTermMatrix(test_corpus,list(dictionary=colnames(DTM_documents)))
+DTM_test
+```
+
+    ## <<DocumentTermMatrix (documents: 2500, terms: 32241)>>
+    ## Non-/sparse entries: 456605/80145895
+    ## Sparsity           : 99%
+    ## Maximal term length: 40
+    ## Weighting          : term frequency (tf)
+
+``` r
+X_test = as.matrix(DTM_test)
+```
+
+|                   |
+|:------------------|
+| Step.3 Prediction |
+
+Get max(Naive Bayes log probs) for each test row (so the prediction is the author of the maximum prob).
+
+``` r
+predict = NULL
+for (i in 1:nrow(X_test)) {
+  max = -(Inf)
+  author = NULL
+  for (j in 1:nrow(w_train)) {
+    result = sum(w_train[j,]*X_test[i,])
+    if(result > max) {
+      max = result
+      author = rownames(w_train)[j]
+    }
+  }
+  predict = append(predict, author)
+}
+```
+
+Get the accuracy and calculate the rate of accuracy
+
+``` r
+table(authors_test == predict)['TRUE']/2500
+```
+
+    ##   TRUE 
+    ## 0.0216
+
+``` r
+table(authors_test[authors_test == predict])/50
+```
+
+    ## 
+    ##   AaronPressman      AlanCrosby BenjaminKangLim 
+    ##            1.00            0.06            0.02
+
+``` r
+predict_results = table(authors_test,predict)
+```
+
+|                                                                                       |
+|:--------------------------------------------------------------------------------------|
+| Conclusion:                                                                           |
+| The overall rate of accuracy (the average accuracy of all 2500 articles) is about 4%. |
+
+We did the second model (Random Forest) in a seperate R file. Please see: "Problem 2 Author Attribution model 2.rmd"
+
+Comparing these 2 models, we found the accuracy rate of Random Forest was better than Naive Bayes.
+
 ### Practice with association rule mining
 
 ``` r
@@ -277,6 +495,10 @@ library(arules)
 
     ## 
     ## Attaching package: 'arules'
+
+    ## The following object is masked from 'package:tm':
+    ## 
+    ##     inspect
 
     ## The following object is masked from 'package:dplyr':
     ## 
@@ -388,7 +610,7 @@ for(i in 1:nset) {
     ## sorting and recoding items ... [93 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 3 4 done [0.00s].
-    ## writing ... [293 rule(s)] done [0.02s].
+    ## writing ... [293 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
     ##       lhs                           rhs                      support confidence      lift
     ## [1]   {}                         => {whole milk}         0.255516014  0.2555160 1.0000000
@@ -826,8 +1048,8 @@ for(i in 1:nset) {
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [62 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.00s].
-    ## checking subsets of size 1 2 3 done [0.02s].
+    ## creating transaction tree ... done [0.01s].
+    ## checking subsets of size 1 2 3 done [0.00s].
     ## writing ... [81 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
     ##      lhs                                   rhs                support   
@@ -1147,7 +1369,7 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 481 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.02s].
     ## sorting and recoding items ... [29 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 done [0.00s].
@@ -1187,7 +1409,7 @@ for(i in 1:nset) {
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [93 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
-    ## checking subsets of size 1 2 3 4 done [0.00s].
+    ## checking subsets of size 1 2 3 4 done [0.01s].
     ## writing ... [225 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
     ##       lhs                           rhs                      support confidence      lift
@@ -1740,7 +1962,7 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 383 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.02s].
     ## sorting and recoding items ... [33 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 3 done [0.00s].
@@ -2317,7 +2539,7 @@ for(i in 1:nset) {
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [93 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.00s].
+    ## creating transaction tree ... done [0.02s].
     ## checking subsets of size 1 2 3 4 done [0.00s].
     ## writing ... [120 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
@@ -2529,7 +2751,7 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 186 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.01s].
     ## sorting and recoding items ... [62 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 3 done [0.00s].
@@ -2610,7 +2832,7 @@ for(i in 1:nset) {
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [45 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.01s].
+    ## creating transaction tree ... done [0.02s].
     ## checking subsets of size 1 2 3 done [0.00s].
     ## writing ... [10 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
@@ -2684,7 +2906,7 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 481 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.02s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [29 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 done [0.00s].
@@ -2869,7 +3091,7 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 186 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.02s].
     ## sorting and recoding items ... [62 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 3 done [0.00s].
@@ -2924,7 +3146,7 @@ for(i in 1:nset) {
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [45 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.00s].
+    ## creating transaction tree ... done [0.02s].
     ## checking subsets of size 1 2 3 done [0.00s].
     ## writing ... [6 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
@@ -2983,7 +3205,7 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 481 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.01s].
     ## sorting and recoding items ... [29 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 done [0.00s].
@@ -3008,7 +3230,7 @@ for(i in 1:nset) {
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [93 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.00s].
+    ## creating transaction tree ... done [0.02s].
     ## checking subsets of size 1 2 3 4 done [0.00s].
     ## writing ... [47 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
@@ -3124,7 +3346,7 @@ for(i in 1:nset) {
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [62 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
-    ## checking subsets of size 1 2 3 done [0.00s].
+    ## checking subsets of size 1 2 3 done [0.02s].
     ## writing ... [6 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
     ##     lhs                                   rhs                support   
@@ -3230,7 +3452,7 @@ for(i in 1:nset) {
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
-    ## sorting and recoding items ... [93 item(s)] done [0.00s].
+    ## sorting and recoding items ... [93 item(s)] done [0.02s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 3 4 done [0.00s].
     ## writing ... [25 rule(s)] done [0.00s].
@@ -3304,9 +3526,9 @@ for(i in 1:nset) {
     ## Absolute minimum support count: 186 
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
-    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.02s].
+    ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [62 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.00s].
+    ## creating transaction tree ... done [0.01s].
     ## checking subsets of size 1 2 3 done [0.00s].
     ## writing ... [1 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
@@ -3331,7 +3553,7 @@ for(i in 1:nset) {
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
     ## sorting and recoding items ... [45 item(s)] done [0.00s].
-    ## creating transaction tree ... done [0.02s].
+    ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 3 done [0.00s].
     ## writing ... [0 rule(s)] done [0.00s].
     ## creating S4 object  ... done [0.00s].
@@ -3380,7 +3602,7 @@ for(i in 1:nset) {
     ## 
     ## set item appearances ...[0 item(s)] done [0.00s].
     ## set transactions ...[169 item(s), 9835 transaction(s)] done [0.00s].
-    ## sorting and recoding items ... [29 item(s)] done [0.02s].
+    ## sorting and recoding items ... [29 item(s)] done [0.00s].
     ## creating transaction tree ... done [0.00s].
     ## checking subsets of size 1 2 done [0.00s].
     ## writing ... [0 rule(s)] done [0.00s].
@@ -3553,14 +3775,14 @@ subset_groc = (subset(groceryrules_final1, subset=lift > 2))
 plot(subset_groc,method="graph", control = list(type="items"))
 ```
 
-![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-17-1.png)
+![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-34-1.png)
 
 ``` r
 plot(groceryrules_final1, shading="order", control = list(main = "Two-key plot",
   col=rainbow(max(size(groceryrules_final1))-1L)))
 ```
 
-![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-17-2.png)
+![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-34-2.png)
 
 ``` r
 plot(subset_groc, method="matrix", measure="lift", control=list(reorder=TRUE))
@@ -3580,15 +3802,15 @@ plot(subset_groc, method="matrix", measure="lift", control=list(reorder=TRUE))
     ## [21] "{other vegetables,pip fruit}"     "{domestic eggs,other vegetables}"
     ## [23] "{butter,other vegetables}"        "{curd,yogurt}"                   
     ## Itemsets in Consequent (RHS)
-    ## [1] "{other vegetables}" "{whole milk}"
+    ## [1] "{whole milk}"       "{other vegetables}"
 
-![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-17-3.png)
+![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-34-3.png)
 
 ``` r
 subrules <- sample(subset_groc, 20)
 plot(subrules, method="graph", control=list(layout=igraph::in_circle()))
 ```
 
-![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-17-4.png)
+![](STA380_Part2_Ex2_AnitaBhat_JianingCui_IshitaIshita_AishwaryaSrikanth_files/figure-markdown_github-ascii_identifiers/unnamed-chunk-34-4.png)
 
 The visualizations above gives us the strength f the associations. THe first graph gives us a depiction of the importance of the various basket items. Whole milk and other vegetables that came us to be most common are in the middle with branches extending outwards to other items. The next one gives us a two-key plot, not for only the subset but the whole set of values as a function of support and confidence. The final graphis a matrix representation of the matrix of rules with the color scale showing the lift. We can match these to the lift values above and get the exact items in the basket.
